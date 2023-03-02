@@ -47,6 +47,16 @@ python3 civitai.py --download \
 --params "type=Hypernetwork"
 ```
 
+Download and verify public models from civitai
+```bash
+python3 civitai.py --download \
+--verify \
+--dir "download" \
+--params "sort=Newest" \
+--params "limit=5" \
+--params "type=Hypernetwork"
+```
+
 Download public and hidden models
 ```bash
 python3 civitai.py --download \

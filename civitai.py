@@ -81,9 +81,11 @@ class CivitAIModel:
         for model in self.sub_models:
             await model.new()
 
-    async def run(self):
+    async def run(self, verify: bool = False):
         for model in self.sub_models:
             await model.run()
+            if verify:
+                await model.verify()
 
 
 class CivitAIModelVersion:
@@ -257,6 +259,7 @@ class CivitAIModelVersion:
                 return
             except Exception as e:
                 print(str(e))
+                retries += 1
                 if retries >= 3:
                     print("Failed to download {}, maximum retires exceeded".format(url))
                     return
@@ -269,7 +272,7 @@ async def check_file_exists(dir: str, fn: str, split_ext: bool = False) -> bool:
     for _, _, efns in os.walk(dir):
         for efn in efns:
             if split_ext:
-                if efn.split(".")[0] == fn:
+                if efn.rsplit(".", maxsplit=1)[0] == fn:
                     return True
             else:
                 if efn == fn:
@@ -277,7 +280,7 @@ async def check_file_exists(dir: str, fn: str, split_ext: bool = False) -> bool:
     return False
 
 
-async def run_download(dl_dir: str, params: list):
+async def run_download(dl_dir: str, verify: bool, params: list):
     cai = CivitAI()
 
     next_page = "https://civitai.com/api/v1/models"
@@ -319,7 +322,7 @@ async def run_download(dl_dir: str, params: list):
         for item in model_list["items"]:
             cai_model = CivitAIModel(dl_dir, item)
             await cai_model.new()
-            await cai_model.run()
+            await cai_model.run(verify)
 
 
 async def run_verify(dl_dir: str):
@@ -339,7 +342,7 @@ async def run_verify(dl_dir: str):
 def main(dir: str, download: bool, verify: bool, param: list):
     try:
         if download:
-            asyncio.run(run_download(dir, param))
+            asyncio.run(run_download(dir, verify, param))
         elif verify:
             asyncio.run(run_verify(dir))
     except KeyboardInterrupt:
