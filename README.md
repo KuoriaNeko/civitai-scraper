@@ -42,9 +42,9 @@ Download public models from civitai
 ```bash
 python3 civitai.py --download \
 --dir "download" \
---params "sort=Newest" \
---params "limit=5" \
---params "type=Hypernetwork"
+--param "sort=Newest" \
+--param "limit=5" \
+--param "type=Hypernetwork"
 ```
 
 Download and verify public models from civitai
@@ -52,20 +52,20 @@ Download and verify public models from civitai
 python3 civitai.py --download \
 --verify \
 --dir "download" \
---params "sort=Newest" \
---params "limit=5" \
---params "type=Hypernetwork"
+--param "sort=Newest" \
+--param "limit=5" \
+--param "type=Hypernetwork"
 ```
 
 Download public and hidden models
 ```bash
 python3 civitai.py --download \
 --dir "download" \
---params "sort=Newest" \
---params "limit=5" \
---params "type=Hypernetwork" \
---params "token=YOUR_API_TOKEN" \
---params "hidden=True"
+--param "sort=Newest" \
+--param "limit=5" \
+--param "type=Hypernetwork" \
+--param "token=YOUR_API_TOKEN" \
+--param "hidden=True"
 ```
 
 Verify downloaded files
