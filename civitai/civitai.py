@@ -5,6 +5,7 @@ import os
 import shutil
 import cloudscraper
 import json
+import asyncio
 from hashlib import md5, sha256
 from datetime import datetime
 from .utils import check_file_exists
