@@ -6,33 +6,20 @@ import re
 import os
 import sys
 import asyncio
+import logging
+import datetime
 
 from civitai import CivitAI, CivitAIModel
 
-
-class Logger:
-    def __init__(self):
-        self.stdout = sys.stdout
-        self.log = open("log.log", "a+", encoding="utf-8")
-        self._secret_re = re.compile(r"&?token\=([^&]+)&?")
-
-    def write(self, msg):
-        re_f = self._secret_re.findall(msg)
-        if len(re_f) > 0:
-            try:
-                msg = msg.replace(re_f[0], "HIDDEN_SECRET")
-            except:
-                pass
-        self.stdout.write(msg)
-        self.log.write(msg)
-
-    def flush(self):
-        self.stdout.flush()
-        self.log.flush()
-
-
-sys.stdout = Logger()
-
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S %z",
+    handlers=[
+        logging.FileHandler("log.log", mode="a+"),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 async def run_download(dl_dir: str, verify: bool, **kwargs):
     cai = CivitAI(dl_dir=dl_dir)
@@ -56,12 +43,12 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
                     model_list = cai.get_models(next_page)
                     break
                 except Exception as e:
-                    print(str(e))
+                    logging.error(e)
                     retries += 1
                     if retries >= 3:
-                        print("Failed to get meta, maximum retires exceeded")
+                        logging.error("failed to get metadata, maximum retires exceeded")
                         return
-                    print("Failed to get meta, waiting for 60s")
+                    logging.error("failed to get meta, waiting for 60s")
                     await asyncio.sleep(60)
 
         total_items = model_list["metadata"]["totalItems"]
@@ -72,7 +59,7 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
         if next_page is None:
             return
 
-        print("Total Items: {}, Page: [{}/{}]".format(
+        logging.info("Total Items: {}, Page: [{}/{}]".format(
             total_items,
             current_page,
             total_pages
@@ -86,6 +73,7 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
             cai_model = CivitAIModel(
                 dl_dir,
                 item,
+                kwargs["ignore_status_code"],
                 kwargs["metadata_only"],
                 kwargs["latest_only"]
             )
@@ -115,6 +103,7 @@ async def run_verify(dl_dir: str, **kwargs):
 @click.command()
 @click.option("--dir", default="downloaded", help="Download to this directory")
 @click.option("--param", default=[], help="URL query params", multiple=True)
+@click.option("--ignore-status-code", default=[401, 403, 404], help="the specified http status codes skips retry, only for download models", multiple=True)
 @click.option("--download", is_flag=True, help="Start file download")
 @click.option("--metadata-only", is_flag=True, help="download metadata only")
 @click.option("--nsfw-only", is_flag=True, help="download NSFW content only, also applies to --metadata-only")
@@ -128,7 +117,7 @@ def main(dir: str, download: bool, verify: bool, **kwargs):
         elif verify:
             asyncio.run(run_verify(dir, **kwargs))
     except KeyboardInterrupt:
-        print("SIGINT received")
+        logging.warning("SIGINT received")
         pass
 
 
