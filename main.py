@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import json
+import random
+
 import click
 import re
 import os
@@ -25,6 +27,44 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
     cai = CivitAI(dl_dir=dl_dir)
     params = kwargs["param"]
     from_metadata = kwargs["from_metadata"]
+    from_url = kwargs["from_url"]
+
+    if from_url:
+        list_url = []
+        with open(r".\asset\url_list.txt","r") as f:
+            list_url = f.readlines()
+        for url in list_url:
+            model_id = cai.get_model_id_from_url(url)
+            if model_id == "":
+                logging.error("url:{0} has not model".format(url))
+                continue
+            retries = 0
+            while 1:
+                try:
+                    model_info = cai.get_models_info_from_id(model_id)
+                    break
+                except Exception as e:
+                    logging.error(e)
+                    retries += 1
+                    if retries >= 3:
+                        logging.error("failed to get model info, maximum retires exceeded")
+                        return
+                    logging.error("failed to get model info, waiting for 60s")
+                    await asyncio.sleep(random.uniform(60,90))
+            if model_info:
+                cai_model = CivitAIModel(
+                        dl_dir,
+                        model_info,
+                        kwargs["ignore_status_code"],
+                        kwargs["metadata_only"],
+                        kwargs["latest_only"],
+                        kwargs["original_image"]
+                    )
+                await cai_model.new()
+                await cai_model.run(verify)
+        return
+
+
 
     next_page = "https://civitai.com/api/v1/models"
     if len(params) > 0:
@@ -110,6 +150,8 @@ async def run_verify(dl_dir: str, **kwargs):
 @click.option("--latest-only", is_flag=True, help="download latest model only, or remove non-latest files on verification, not applies to --metadata-only")
 @click.option("--from-metadata", is_flag=True, help="read metadata downloaded previously when downloading models")
 @click.option("--verify", is_flag=True, help="Run verification for downloaded files")
+@click.option("--from_url", is_flag=True, help="download models from url_list,please put your url into asset/url_list.txt")
+@click.option("--original_image", is_flag=True, help="download original image")
 def main(dir: str, download: bool, verify: bool, **kwargs):
     try:
         if download:

@@ -7,6 +7,7 @@ import cloudscraper
 import json
 import asyncio
 import logging
+import re
 from hashlib import md5, sha256
 from datetime import datetime
 from .utils import check_file_exists
@@ -42,6 +43,56 @@ class CivitAI:
                 data["metadata"]["totalItems"] += 1
         return data
 
+    def get_model_id_from_url(self,url):
+        id = ""
+        if not url:
+            logging.info("url can not be empty")
+            return ""
+
+        if url.isnumeric():
+            id = str(url)
+            return id
+
+        check = url.split("/")
+        if len(check) < 2:
+            logging.info("url is not valid")
+            return ""
+        if check[-2].isnumeric():
+            id = check[-2]
+        elif check[-1].isnumeric():
+            id = check[-1]
+        else:
+            logging.info("no model id in this url")
+            return ""
+        return id
+
+    def get_models_info_from_id(self, id: str) -> dict:
+        logging.info("get_models_info_from_id %s"%id)
+        if not id:
+            logging.info("id is empty")
+            return
+
+        resp = self._scraper.get("https://civitai.com/api/v1/models/"+str(id),timeout=30)
+        if resp.status_code != 200:
+            if resp.status_code == 404:
+                logging.error("404 url:https://civitai.com/api/v1/models/"+str(id))
+                return
+            raise ValueError(resp.status_code)
+
+        model_info = None
+        try:
+            model_info = resp.json()
+        except Exception as e:
+            logging.info("Parse response json failed")
+            logging.info(e)
+            return
+
+        if not model_info:
+            logging.info("error,model info is empty")
+            return
+        return model_info
+
+
 
 class CivitAIModel:
     def __init__(
@@ -51,12 +102,14 @@ class CivitAIModel:
         ignore_status_code: list,
         metadata_only: bool,
         latest_only: bool,
-        from_metadata: bool = False
+        original_image: bool = False,
+        from_metadata: bool = False,
     ):
         self._data = copy.deepcopy(data)
         self._metadata_only = metadata_only
         self._latest_only = latest_only
         self._from_metadata = from_metadata
+        self._original_image = original_image
 
         self.model_id = data["id"]
         self.model_path = os.path.join(dl_dir, "{}".format(self.model_id))
@@ -118,7 +171,10 @@ class CivitAIModel:
             return
 
         for model in self.sub_models:
-            await model.run()
+            if self._original_image:
+                await model.original_image_run()
+            else:
+                await model.run()
             if verify:
                 await model.verify()
 
@@ -171,7 +227,8 @@ class CivitAIModelVersion:
             self.images.append({
                 "url": image["url"],
                 "md5_hash": md5_hash,
-                "file": fn
+                "file": fn,
+                "width": image["width"]
             })
 
     def log_info(self, message):
@@ -266,6 +323,31 @@ class CivitAIModelVersion:
                 images_total
             ))
             await self.download(image["url"], image["file"], auto_ext=True)
+
+    def get_original_image_url(self,image_url, width):
+        return re.sub('/width=\d+/', '/width=' + str(width) + '/', image_url)
+
+    async def original_image_run(self):
+        for model_file in self.model_files:
+            # download model file
+            if not await check_file_exists(self.sub_model_path, model_file["file"]):
+                self.log_info("downloading model to {}".format(model_file["file"]))
+                await self.download(model_file["url"], model_file["file"])
+
+        # download images
+        images_total = len(self.images)
+        for i in range(images_total):
+            image = self.images[i]
+            if await check_file_exists(self.sub_model_path, image["file"], split_ext=True):
+                continue
+
+            self.log_info("downloading image to {} [{}/{}]".format(
+                image["file"],
+                i + 1,
+                images_total
+            ))
+            image_url = self.get_original_image_url(image["url"],image["width"])
+            await self.download(image_url, image["file"], auto_ext=True)
 
     async def _download(self, url: str, fn: str, auto_ext: bool = False):
         with self._scraper.get(url, stream=True) as r:
