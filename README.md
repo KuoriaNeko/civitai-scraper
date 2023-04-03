@@ -36,41 +36,6 @@ Examples (for convenience, some long text will be omitted):
 - [cloudscraper](https://github.com/VeNoMouS/cloudscraper)
 - [click](https://github.com/pallets/click/)
 
-# Usage
+# Examples
 
-Download public models from civitai
-```bash
-python3 civitai.py --download \
---dir "download" \
---param "sort=Newest" \
---param "limit=5" \
---param "type=Hypernetwork"
-```
-
-Download and verify public models from civitai
-```bash
-python3 civitai.py --download \
---verify \
---dir "download" \
---param "sort=Newest" \
---param "limit=5" \
---param "type=Hypernetwork"
-```
-
-Download public and hidden models
-```bash
-python3 civitai.py --download \
---dir "download" \
---param "sort=Newest" \
---param "limit=5" \
---param "type=Hypernetwork" \
---param "token=YOUR_API_TOKEN" \
---param "hidden=True"
-```
-
-Verify downloaded files
-```bash
-python3 civitai.py \
---dir "download" \
---verify
-```
+Check [Examples](https://github.com/KuoriaNeko/civitai-scarper/examples)
