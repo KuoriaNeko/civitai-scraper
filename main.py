@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
 import json
+import random
+
 import click
 import re
 import os
@@ -21,10 +23,12 @@ logging.basicConfig(
     ]
 )
 
+
 async def run_download(dl_dir: str, verify: bool, **kwargs):
     cai = CivitAI(dl_dir=dl_dir)
     params = kwargs["param"]
     from_metadata = kwargs["from_metadata"]
+    from_url_file = kwargs["from_url_file"]
 
     next_page = "https://civitai.com/api/v1/models"
     if len(params) > 0:
@@ -32,32 +36,21 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
         for param in params:
             next_page += "&{}".format(param)
 
-    while 1:
+    while len(next_page) > 0:
         model_list = {}
         if from_metadata:
-            model_list = cai.get_models_from_metadata()
+            model_list = await cai.get_models_from_metadata()
+            next_page = ""
+        elif len(from_url_file) > 0:
+            model_list = await cai.get_model_ids_from_file(from_url_file)
+            next_page = ""
         else:
-            retries = 0
-            while 1:
-                try:
-                    model_list = cai.get_models(next_page)
-                    break
-                except Exception as e:
-                    logging.error(e)
-                    retries += 1
-                    if retries >= 3:
-                        logging.error("failed to get metadata, maximum retires exceeded")
-                        return
-                    logging.error("failed to get meta, waiting for 60s")
-                    await asyncio.sleep(60)
+            model_list = await cai.civitai_get(next_page)
 
         total_items = model_list["metadata"]["totalItems"]
         total_pages = model_list["metadata"]["totalPages"]
         current_page = model_list["metadata"]["currentPage"]
-        next_page = model_list["metadata"].get("nextPage", None)
-
-        if next_page is None:
-            return
+        next_page = model_list["metadata"].get("nextPage", "")
 
         logging.info("Total Items: {}, Page: [{}/{}]".format(
             total_items,
@@ -67,6 +60,14 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
 
         nsfw_only = kwargs["nsfw_only"]
         for item in model_list["items"]:
+            # from url file
+            if len(from_url_file) > 0:
+                item = await cai.civitai_get(
+                    "https://civitai.com/api/v1/models/{}".format(item)
+                )
+                if not item:
+                    continue
+
             if nsfw_only and not item["nsfw"]:
                 continue
 
@@ -75,13 +76,12 @@ async def run_download(dl_dir: str, verify: bool, **kwargs):
                 item,
                 kwargs["ignore_status_code"],
                 kwargs["metadata_only"],
-                kwargs["latest_only"]
+                kwargs["latest_only"],
+                from_metadata=from_metadata,
+                original_image=kwargs["original_image"]
             )
             await cai_model.new()
             await cai_model.run(verify)
-
-        if from_metadata:
-            return
 
 
 async def run_verify(dl_dir: str, **kwargs):
@@ -92,6 +92,7 @@ async def run_verify(dl_dir: str, **kwargs):
             cai_model = CivitAIModel(
                 dl_dir,
                 json.load(f),
+                kwargs["ignore_status_code"],
                 kwargs["metadata_only"],
                 kwargs["latest_only"]
             )
@@ -109,6 +110,8 @@ async def run_verify(dl_dir: str, **kwargs):
 @click.option("--nsfw-only", is_flag=True, help="download NSFW content only, also applies to --metadata-only")
 @click.option("--latest-only", is_flag=True, help="download latest model only, or remove non-latest files on verification, not applies to --metadata-only")
 @click.option("--from-metadata", is_flag=True, help="read metadata downloaded previously when downloading models")
+@click.option("--from-url-file", default="", help="download models from url file")
+@click.option("--original-image", is_flag=True, help="download original images")
 @click.option("--verify", is_flag=True, help="Run verification for downloaded files")
 def main(dir: str, download: bool, verify: bool, **kwargs):
     try:
@@ -116,9 +119,12 @@ def main(dir: str, download: bool, verify: bool, **kwargs):
             asyncio.run(run_download(dir, verify, **kwargs))
         elif verify:
             asyncio.run(run_verify(dir, **kwargs))
+        else:
+            click.echo(
+                click.get_current_context().get_help())
+            exit(1)
     except KeyboardInterrupt:
         logging.warning("SIGINT received")
-        pass
 
 
 if __name__ == "__main__":

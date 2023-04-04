@@ -7,6 +7,7 @@ import cloudscraper
 import json
 import asyncio
 import logging
+import re
 from hashlib import md5, sha256
 from datetime import datetime
 from .utils import check_file_exists
@@ -14,32 +15,75 @@ from .utils import check_file_exists
 
 class CivitAI:
     def __init__(self, dl_dir: str):
-        self._api_base = "https://civitai.com"
         self._scraper = cloudscraper.create_scraper(browser='chrome')
         self._dl_dir = dl_dir
-
-    def get_models(self, url: str) -> dict:
-        resp = self._scraper.get(url, timeout=30)
-
-        if resp.status_code != 200:
-            raise ValueError(resp.status_code)
-        return resp.json()
-
-    def get_models_from_metadata(self) -> dict:
-        data = {
+        self._base_data = {
             "metadata": {
                 "totalItems": 0,
                 "totalPages": 1,
                 "currentPage": 1,
-                "nextPage": 0
+                "nextPage": ""
             },
             "items": []
         }
+
+    async def civitai_get(self, url: str) -> dict:
+        retries = 0
+        while 1:
+            try:
+                logging.info(url)
+                resp = self._scraper.get(url, timeout=30)
+                if resp.status_code != 200:
+                    raise InvalidStatusCode(resp.status_code)
+                return resp.json()
+            except InvalidStatusCode as e:
+                logging.error(e)
+                if e.status_code == 404:
+                    return
+                retries += 1
+            except Exception as e:
+                logging.error(e)
+                retries += 1
+
+            if retries >= 3:
+                logging.error(
+                    "failed to get metadata, maximum retires exceeded")
+                return
+            logging.error("failed to get meta, waiting for 60s")
+            await asyncio.sleep(60)
+
+    async def get_models_from_metadata(self) -> dict:
+        data = copy.deepcopy(self._base_data)
         for dir in os.listdir(self._dl_dir):
             metafile = os.path.join(self._dl_dir, dir, "meta.json")
             with open(metafile, "r", encoding="utf-8") as f:
                 data["items"].append(json.load(f))
                 data["metadata"]["totalItems"] += 1
+        return data
+
+    async def get_model_ids_from_file(self, filename: str) -> dict:
+        data = copy.deepcopy(self._base_data)
+        with open(filename, "r") as f:
+            list_url = f.readlines()
+        for url in list_url:
+            url = url.strip()
+
+            # URL is model ID
+            if url.isnumeric():
+                data["items"].append(url)
+                continue
+
+            check = url.split("/")
+            if len(check) < 2:
+                logging.error("invalid url {}".format(url))
+                continue
+            if check[-2].isnumeric():
+                data["items"].append(check[-2])
+            elif check[-1].isnumeric():
+                data["items"].append(check[-1])
+            else:
+                logging.error("model id not found in url {}".format(url))
+                continue
         return data
 
 
@@ -51,12 +95,14 @@ class CivitAIModel:
         ignore_status_code: list,
         metadata_only: bool,
         latest_only: bool,
-        from_metadata: bool = False
+        from_metadata: bool = False,
+        original_image: bool = False
     ):
         self._data = copy.deepcopy(data)
         self._metadata_only = metadata_only
         self._latest_only = latest_only
         self._from_metadata = from_metadata
+        self._original_image = original_image
 
         self.model_id = data["id"]
         self.model_path = os.path.join(dl_dir, "{}".format(self.model_id))
@@ -74,12 +120,12 @@ class CivitAIModel:
         for model in self._data["modelVersions"]:
             if self._latest_only and len(self.sub_models) > 0:
                 m = CivitAIModelVersion(
-                    self.model_id, self.model_path, model, ignore_status_code)
+                    self.model_id, self.model_path, model, ignore_status_code, self._original_image)
                 if os.path.exists(m.sub_model_path):
                     self.nonlatest_sub_models.append(m)
             else:
                 self.sub_models.append(CivitAIModelVersion(
-                    self.model_id, self.model_path, model, ignore_status_code))
+                    self.model_id, self.model_path, model, ignore_status_code, self._original_image))
 
     async def remove_non_latest_model(self):
         for model in self.nonlatest_sub_models:
@@ -124,10 +170,18 @@ class CivitAIModel:
 
 
 class CivitAIModelVersion:
-    def __init__(self, model_id: int, dl_dir: str, data: dict, ignore_status_code: list):
+    def __init__(
+        self,
+        model_id: int,
+        dl_dir: str,
+        data: dict,
+        ignore_status_code: list,
+        original_image: bool
+    ):
         self._data = copy.deepcopy(data)
         self._scraper = cloudscraper.create_scraper(browser='chrome')
         self._ignore_status_code = ignore_status_code
+        self._original_image = original_image
         self._ct_map = {
             "image/jpeg": "jpg",
             "image/png": "png",
@@ -171,7 +225,8 @@ class CivitAIModelVersion:
             self.images.append({
                 "url": image["url"],
                 "md5_hash": md5_hash,
-                "file": fn
+                "file": fn,
+                "width": image["width"]
             })
 
     def log_info(self, message):
@@ -260,12 +315,17 @@ class CivitAIModelVersion:
             if await check_file_exists(self.sub_model_path, image["file"], split_ext=True):
                 continue
 
+            image_url = self.get_original_image_url(
+                image["url"], image["width"]) if self._original_image else image["url"]
             self.log_info("downloading image to {} [{}/{}]".format(
                 image["file"],
                 i+1,
                 images_total
             ))
-            await self.download(image["url"], image["file"], auto_ext=True)
+            await self.download(image_url, image["file"], auto_ext=True)
+
+    def get_original_image_url(self, image_url: str, width: int):
+        return re.sub(r'/width=\d+/', '/width={}'.format(width) + '/', image_url)
 
     async def _download(self, url: str, fn: str, auto_ext: bool = False):
         with self._scraper.get(url, stream=True) as r:
