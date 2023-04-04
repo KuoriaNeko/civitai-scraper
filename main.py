@@ -119,9 +119,12 @@ def main(dir: str, download: bool, verify: bool, **kwargs):
             asyncio.run(run_download(dir, verify, **kwargs))
         elif verify:
             asyncio.run(run_verify(dir, **kwargs))
+        else:
+            click.echo(
+                click.get_current_context().get_help())
+            exit(1)
     except KeyboardInterrupt:
         logging.warning("SIGINT received")
-        pass
 
 
 if __name__ == "__main__":
