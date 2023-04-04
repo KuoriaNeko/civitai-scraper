@@ -52,8 +52,8 @@ URL file content accepts these formats(per line):
 
 |Description|Example|
 |--|--|
-|Model Webpage URL|https://civitai.com/models/26139/blue-lycoris-uniform|
-|Model Webpage URL|https://civitai.com/models/26139|
+|Model Webpage URL|`https://civitai.com/models/26139/blue-lycoris-uniform`|
+|Model Webpage URL|`https://civitai.com/models/26139`|
 |Model ID|26139|
 
-You can find a example URL file [here](https://github.com/KuoriaNeko/civitai-scarper/examples/url_file/url_list.txt)
+You can find a example URL file [here](url_file/url_list.txt)

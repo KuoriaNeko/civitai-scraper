@@ -38,4 +38,4 @@ Examples (for convenience, some long text will be omitted):
 
 # Examples
 
-Check [Examples](https://github.com/KuoriaNeko/civitai-scarper/examples)
+Check [Examples](examples)
