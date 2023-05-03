@@ -13,6 +13,18 @@ download
         └───eg.jpg # Preview image
 ```
 
+If you want to scrape images using main_img.py, the directory structure should be as follows:
+
+```
+download
+├───img_id_1.json # Metadata of img_id
+├───img_id_1.png (or webp, jpg) # Image
+├───img_id_2.json
+└───img_id_2.png
+...
+```
+
+
 ## How the downloaded files are named
 
 Files are named in the following format:
@@ -39,3 +51,19 @@ Examples (for convenience, some long text will be omitted):
 # Examples
 
 Check [Examples](https://github.com/KuoriaNeko/civitai-scarper/examples)
+
+
+Here's an example for downloading images:
+
+```
+python3 main_img.py --download --dir "download" --param "limit=200" --param "period=AllTime"
+```
+Please refer to [Image API reference](https://github.com/civitai/civitai/wiki/REST-API-Reference#get-apiv1images) to request specific images.
+
+
+
+
+
+
+
+
