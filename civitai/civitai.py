@@ -372,6 +372,119 @@ class CivitAIModelVersion:
                     await asyncio.sleep(60)
 
 
+class CivitAIImage:
+    def __init__(
+        self,
+        dl_dir: str,
+        data: dict,
+        metadata_only: bool,
+        original_image: bool
+    ):
+        self.dl_dir = dl_dir
+        self._data = copy.deepcopy(data)
+        self._scraper = cloudscraper.create_scraper(browser='chrome')
+        self._original_image = original_image
+        self._metadata_only = metadata_only
+        self._ct_map = {
+            "image/jpeg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp"
+        }
+
+        self.img_id = os.path.join(dl_dir, str(self._data['id']))
+        self.img_url = self._data['url']
+        self.img_width = self._data['width']
+
+    def log_info(self, message):
+        logging.info("[{}] {}".format(
+            self.img_id,
+            message))
+
+    def log_warn(self, message):
+        logging.warning("[{}] {}".format(
+            self.img_id,
+            message))
+
+    def log_error(self, message):
+        logging.error("[{}] {}".format(
+            self.img_id,
+            message))
+
+    async def verify(self):
+        if not await check_file_exists(self.dl_dir, self.img_id, split_ext=True):
+            self.log_error(
+                "image file {} does not exists".format(self.img_id))
+
+    async def new(self):
+        '''
+        Creates model version path
+        '''
+
+        os.makedirs(self.dl_dir, exist_ok=True)
+
+    async def run(self):
+
+        if await check_file_exists(self.dl_dir, self.img_id, split_ext=True):
+            return
+
+        with open("{}.{}".format(self.img_id, 'json'), "w") as json_file:
+            json.dump(self._data, json_file)
+        if self._metadata_only:
+            return
+        image_url = self.get_original_image_url(
+            self.img_url, self.img_width) if self._original_image else self.img_url
+        self.log_info("downloading image to {}".format(self.img_id))
+        await self.download(image_url, self.img_id, auto_ext=True)
+
+
+    def get_original_image_url(self, image_url: str, width: int):
+        return re.sub(r'/width=\d+/', '/width={}'.format(width) + '/', image_url)
+
+    async def _download(self, url: str, fn: str, auto_ext: bool = False):
+        with self._scraper.get(url, stream=True) as r:
+            # Set encoding to utf-8 to avoid character issues
+            r.encoding = "utf-8"
+
+            if auto_ext:
+                ext_name = self._ct_map.get(
+                    r.headers.get("Content-Type", "default"),
+                    ""
+                )
+                if len(ext_name) > 0:
+                    fn = "{}.{}".format(fn, ext_name)
+
+            if r.status_code != 200:
+                raise InvalidStatusCode(r.status_code)
+
+            with open(fn, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    # If you have chunk encoded response uncomment if
+                    # and set chunk_size parameter to None.
+                    # if chunk:
+                    f.write(chunk)
+
+    async def download(self, url: str, fn: str, auto_ext: bool = False):
+        retries = 0
+        while 1:
+            try:
+                await self._download(url, fn, auto_ext)
+                self.log_info("downloaded {}".format(url))
+                return
+            except InvalidStatusCode as e:
+                self.log_error(e)
+                if e.status_code in self._ignore_status_code:
+                    return
+                else:
+                    retries += 1
+                    if retries >= 3:
+                        self.log_error(
+                            "failed to download {}, maximum retires exceeded".format(url))
+                        return
+                    self.log_error(
+                        "Failed to download {}, waiting for 60s".format(url))
+                    await asyncio.sleep(60)
+
+
 class InvalidStatusCode(Exception):
     def __init__(self, status_code: int):
         super().__init__("invalid status code {}".format(status_code))
